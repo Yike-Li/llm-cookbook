@@ -3,6 +3,28 @@ import json
 import openai
 from collections import defaultdict
 
+from openai import OpenAI
+import hvac
+
+vault_client = hvac.Client()
+if not vault_client.is_authenticated():
+    raise ValueError(
+        "An OpenAI API key wasn't found in the configs or environment and vault isn't authenticated, giving up."
+    )
+response = vault_client.read("secret-paas/project/octo/dev/env/OPENAI_API_KEY")
+
+if isinstance(response, dict):
+    api_key = response["data"]["value"]
+else:
+    raise ValueError(
+        "Received unexpected response from vault while fetching OpenAI key."
+    )
+
+# api_key = os.environ.get("PERPLEXITY_API_KEY")
+
+client = OpenAI(api_key=api_key)
+
+
 # 商品和目录的数据文件
 products_file = 'products.json'
 categories_file = 'categories.json'
@@ -113,15 +135,24 @@ step_6_system_message_content = f"""
 
 step_6_system_message = {'role':'system', 'content': step_6_system_message_content}    
 
-# 使用 ChatCompletion 接口
-def get_completion_from_messages(messages, model="gpt-3.5-turbo", temperature=0, max_tokens=500):
-    response = openai.ChatCompletion.create(
+def get_completion_from_messages(messages, model="gpt-4o-mini", temperature=0, max_tokens=None):
+    '''
+    封装一个支持更多参数的自定义访问 OpenAI GPT3.5 的函数
+
+    参数: 
+    messages: 这是一个消息列表，每个消息都是一个字典，包含 role(角色）和 content(内容)。角色可以是'system'、'user' 或 'assistant’，内容是角色的消息。
+    model: 调用的模型，默认为 gpt-3.5-turbo(ChatGPT)，有内测资格的用户可以选择 gpt-4
+    temperature: 这决定模型输出的随机程度，默认为0，表示输出将非常确定。增加温度会使输出更随机。
+    max_tokens: 这决定模型输出的最大的 token 数。
+    '''
+    response = client.chat.completions.create(
         model=model,
         messages=messages,
-        temperature=temperature, 
-        max_tokens=max_tokens, 
+        temperature=temperature,  # 控制模型输出的随机程度
+        max_tokens=max_tokens,  # 控制输出的最大长度
     )
-    return response.choices[0].message["content"]
+#     print(str(response.choices[0].message))
+    return response.choices[0].message.content
 
 # 创建目录（如果没有本地目录文件，需要创建一份）
 def create_categories():
